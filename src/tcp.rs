@@ -128,6 +128,8 @@ impl<'a> TcpHeader<'a>
     }
 }
 
+// Maybe this function should be split into multiple:
+// maybe TcpHeader::new? IPv4Header::new? serialize?
 pub fn build_tcp_packet(orig_ip: &ipv4::IPv4Header, orig_tcp: &TcpHeader, flags: u8, seq_num: u32, ack_num: u32, text: &[u8]) -> Vec<u8>
 {
     let mut tcp = TcpHeader
@@ -150,12 +152,12 @@ pub fn build_tcp_packet(orig_ip: &ipv4::IPv4Header, orig_tcp: &TcpHeader, flags:
         ihl: 5,
         dscp: 0,
         ecn: 0,
-        total_length: 40 + text.len() as u16,
+        total_length: 40 + text.len() as u16, // Some magic numbers
         identification: 0,
         flags: 0b000,
         fragment_offset: 0,
         time_to_live: 64,
-        protocol: 6, // tcp
+        protocol: 6, // tcp                   // More magic numbers. This is used multiple times even
         header_checksum: 0, // filled out later
         source_ip: orig_ip.dest_ip,
         dest_ip: orig_ip.source_ip,

@@ -49,6 +49,7 @@ impl Connection
         }
     }
 
+    // This code is basically the same. Maybe there is a way to unify it?
     fn clear(&mut self)
     {
         self.state = State::Listen;
@@ -93,10 +94,13 @@ fn main() -> Result<()>
             continue;
         }
 
+        // We do not check that the packet belongs to the connection established
+
         match conn.state
         {
             State::Listen if tcp.get_flag(TcpFlag::Syn) =>
             {
+                // Syn-Ack in this situation is invalid and should be treated with Rst
                 println!("got SYN");
     
                 conn.state = State::SynRecvd;
@@ -113,6 +117,7 @@ fn main() -> Result<()>
             },
             State::SynRecvd if tcp.get_flag(TcpFlag::Ack) =>
             {
+                // Syn-Ack in this situation is invalid and should be treated with Rst
                 if tcp.ack_number != conn.send_seq.wrapping_add(1) || tcp.get_flag(TcpFlag::Syn)
                 {
                     println!("got invalid ack, sending RST");
@@ -135,6 +140,8 @@ fn main() -> Result<()>
                 conn.send_seq = conn.send_seq.wrapping_add(1);
                 conn.state = State::Estab;
             },
+            // This should be at the top as the case with highest priority.
+            // idk if it is possible to get ack-rst or syn-rst, but either way
             _ if tcp.get_flag(TcpFlag::Rst) =>
             {
                 println!("got RST, connection closed");
@@ -169,6 +176,11 @@ fn main() -> Result<()>
                     continue;
                 }
 
+                // Also, tcp.sequence_number can be difference from conn.recv_seq
+                // xx is the segment we receive
+                // --|xx--|-- what you process now
+                // -x|x---|-- also legal
+                // --|-xx-|-- also legal, but harder to implement, lets skip for now
                 if tcp.sequence_number != conn.recv_seq
                     || !wrapping_between(
                         conn.send_seq,
@@ -177,6 +189,7 @@ fn main() -> Result<()>
                 {
                     println!("sending an empty packet");
 
+                    // &Vec<T> can dereference to &[T]
                     iface.send(build_tcp_packet(
                         &ip,
                         &tcp,
@@ -195,8 +208,10 @@ fn main() -> Result<()>
                 conn.send_window = tcp.window_size;
                 conn.recv_seq = conn.recv_seq.wrapping_add(data.len() as u32);
 
+                // What if tcp.ack_number wraps? 
                 if conn.send_seq < tcp.ack_number
                 {
+                    // Not wrapping!
                     let amount = tcp.ack_number - conn.send_seq;
                     conn.send_seq = tcp.ack_number;
                     conn.packet_queue.drain(..amount as usize);
@@ -223,6 +238,7 @@ fn main() -> Result<()>
                     {
                         conn.state = State::Closed;
 
+                        // Also duplicate with 125
                         iface.send(build_tcp_packet(
                             &ip,
                             &tcp,
@@ -251,6 +267,7 @@ clear - Clear the screen", "----- Help -----".bold()).green().to_string();
                     "conn" =>
                     {
                         let msg = format!("{conn:?}");
+                        // Maybe use magenta only once?
                         let msg = format!("{} {}", "conn =".magenta(), msg.magenta().bold());
                         conn.packet_queue.extend(msg.as_bytes()); 
                     },
@@ -261,6 +278,8 @@ clear - Clear the screen", "----- Help -----".bold()).green().to_string();
                     _ =>
                     {
                         let msg = format!("Invalid command. Try \"{}\"", "help".underline()).red().bold().to_string();
+                        // You have this | exact line repeated like 5 times. Refactor?
+                        //               v
                         conn.packet_queue.extend(msg.as_bytes());
                     },
                 }
@@ -287,10 +306,13 @@ clear - Clear the screen", "----- Help -----".bold()).green().to_string();
                     text,
                 ).as_slice()).expect("failed to send ACK");
             },
+            // Rst flag (if any) was caught in an earlier case
             State::Closed if !tcp.get_flag(TcpFlag::Rst) =>
             {
                 println!("got a packet in a closed connection, sending RST");
 
+                // This seems to be the exact code from line 125
+                // Maybe it can be united/refactored to remove duplication
                 iface.send(build_tcp_packet(
                     &ip,
                     &tcp,
