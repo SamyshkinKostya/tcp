@@ -82,6 +82,9 @@ impl<'a> IPv4Header<'a>
 
             sum += u16::from_be_bytes(data[i..i + 2].try_into().unwrap()) as u32;
             
+            // This is a cool trick and all
+            // But lets use overflowing_add
+            // It would make this more readable imo
             sum += sum >> 16;
             sum &= 0x0000FFFF;
         }
